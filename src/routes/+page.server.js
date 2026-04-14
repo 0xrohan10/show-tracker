@@ -46,8 +46,14 @@ export async function load({ url }) {
       results = await searchShows(q);
       if (country !== 'all') {
         const codes = new Set(country.split(','));
-        results = results.filter((r) => !r.country || codes.has(r.country));
+        // sort matching countries first, but keep others (shows like Industry air in US/CA but origin is GB)
+        results.sort((a, b) => {
+          const aMatch = !a.country || codes.has(a.country) ? 0 : 1;
+          const bMatch = !b.country || codes.has(b.country) ? 0 : 1;
+          return aMatch - bMatch;
+        });
       }
+      results = results.slice(0, 10);
     } catch (err) {
       searchError = String(err);
     }
