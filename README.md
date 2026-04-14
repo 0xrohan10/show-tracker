@@ -13,7 +13,7 @@ personal tv release calendar. searches TMDB, pulls episode schedules from tvmaze
 
 no auth. if you want to gate it, put it behind tailscale serve.
 
-## first-time setup (on the studio)
+## first-time setup
 
 ```sh
 git clone git@github.com:0xrohan10/show-tracker.git
@@ -26,60 +26,25 @@ create `.env` with your TMDB API key (free, register at themoviedb.org):
 echo 'TMDB_API_KEY="your_key_here"' > .env
 ```
 
-install, build, and verify:
+**the API key lives in `.env`, never in the plist or any committed file.** the `start.sh` wrapper sources `.env` before launching the server, so launchd picks up the key without it being hardcoded anywhere.
+
+install and build:
 
 ```sh
 bun install
 bun run build
-PORT=63000 bun build/index.js
-# ctrl+c once you've confirmed it works
 ```
 
-### set up launchd (runs on boot, restarts on crash)
-
-create the app plist — **update the bun path** (`which bun`) and **TMDB key**:
+### install launchd services
 
 ```sh
-cat > ~/Library/LaunchAgents/com.rohan.showtracker.plist << 'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.rohan.showtracker</string>
-  <key>WorkingDirectory</key><string>/Users/rohan/Developer/projects/show-tracker</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Users/rohan/.bun/bin/bun</string>
-    <string>build/index.js</string>
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>PORT</key><string>63000</string>
-    <key>HOST</key><string>0.0.0.0</string>
-    <key>DB_PATH</key><string>/Users/rohan/Developer/projects/show-tracker/data/shows.db</string>
-    <key>TMDB_API_KEY</key><string>YOUR_KEY_HERE</string>
-  </dict>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/showtracker.log</string>
-  <key>StandardErrorPath</key><string>/tmp/showtracker.err</string>
-</dict>
-</plist>
-PLIST
+./install.sh
 ```
 
-set up the nightly refresh (4am, curls the refresh endpoint):
+this generates two plists from the current directory and loads them:
 
-```sh
-cp com.rohan.showtracker.refresh.plist ~/Library/LaunchAgents/
-```
-
-load both:
-
-```sh
-launchctl load ~/Library/LaunchAgents/com.rohan.showtracker.plist
-launchctl load ~/Library/LaunchAgents/com.rohan.showtracker.refresh.plist
-```
+- **`com.rohan.showtracker`** — runs the server on boot, restarts on crash
+- **`com.rohan.showtracker.refresh`** — nightly 4am cron to refresh episode data
 
 verify:
 
@@ -91,14 +56,12 @@ curl -s http://localhost:63000/ | head -1
 ## updating (redeploy)
 
 ```sh
-cd ~/Developer/projects/show-tracker
+cd /path/to/show-tracker
 git pull
-bun install
-bun run build
-launchctl kickstart -k gui/$(id -u)/com.rohan.showtracker
+./deploy.sh
 ```
 
-that's it — `kickstart -k` kills the running process, launchd restarts it immediately with the new build.
+`deploy.sh` installs deps, rebuilds, and kicks the launchd service to restart with the new build.
 
 ## troubleshooting
 
@@ -133,8 +96,6 @@ bun run dev
 
 hot reloads on save. `.env` is read automatically by vite in dev mode. the dev server port is assigned by vite (usually 5173).
 
-**important:** launchd doesn't read `.env` — env vars for prod must be in the plist. if you change `TMDB_API_KEY` or add new env vars, update the plist and reload.
-
 ## accessing from elsewhere
 
 tailscale. hit `http://<studio-tailnet-name>:63000` from any device on your tailnet.
@@ -157,6 +118,14 @@ tvmaze rate limit is 20 req / 10s — the refresh sleeps 250ms between shows. TM
 | `DB_PATH` | `./data/shows.db` | sqlite database path |
 | `PORT` | `63000` | server port |
 | `HOST` | `localhost` | bind address (`0.0.0.0` for tailscale) |
+
+## scripts
+
+| script | purpose |
+|--------|---------|
+| `install.sh` | generates launchd plists from pwd, loads them — run once |
+| `deploy.sh` | `bun install` + `bun run build` + restart service — run after pulling |
+| `start.sh` | wrapper that sources `.env` and runs bun — called by launchd |
 
 ## files
 
