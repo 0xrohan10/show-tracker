@@ -1,51 +1,51 @@
 # show-tracker
 
-personal release calendar for tv shows. uses tvmaze's api (free, no key). sqlite on disk. runs on your mac studio, access via tailscale from anywhere.
+personal tv release calendar. searches TMDB, pulls episode schedules from tvmaze, auto-resolves canadian streaming services. sqlite on disk. runs on a mac studio, access via tailscale from anywhere.
 
 ## stack
 
-- sveltekit (node adapter)
+- sveltekit 2 (bun adapter)
 - better-sqlite3 — single file at `./data/shows.db`
-- tvmaze api for show + episode data
+- TMDB for search + show metadata + CA watch providers
+- tvmaze for episode airdates/times (merged with TMDB for best coverage)
+- lucide icons
 - launchd for nightly refresh
 
-no auth. if you want to gate it behind something, stick it behind tailscale serve / caddy with basic auth. running on localhost means only you on the network can hit it anyway.
+no auth. if you want to gate it, put it behind tailscale serve.
 
 ## setup
 
 ```sh
 cd show-tracker
-npm install
-npm run build
+bun install
 ```
 
-`better-sqlite3` compiles native bindings — on apple silicon this just works, but if it yells at you about python or gyp, `xcode-select --install` usually fixes it.
+`better-sqlite3` compiles native bindings — on apple silicon this just works, but if it yells about python or gyp, `xcode-select --install` usually fixes it.
+
+you need a TMDB API key (free, register at themoviedb.org). add it to `.env`:
+
+```sh
+echo 'TMDB_API_KEY="your_key_here"' > .env
+```
 
 ## running it
 
-dev mode (hot reload on port 5173):
+dev mode (hot reload):
 
 ```sh
-npm run dev
+bun run dev
 ```
 
-prod mode (port 3000):
+prod build + run:
 
 ```sh
-PORT=3000 node build
+bun run build
+PORT=3000 bun build/index.js
 ```
 
-you probably want this running permanently. options in order of how much you'll actually do them:
+### running permanently
 
-**tmux + autostart on boot**. simplest. wrap `node build` in a tmux session, add a launchd plist that starts it on login.
-
-**pm2**. `npm i -g pm2`, `pm2 start build/index.js --name tracker`, `pm2 save`, `pm2 startup` — it writes the launchd plist for you.
-
-**docker**. overkill for one process with a sqlite file but whatever floats the boat.
-
-### launchd for the app itself
-
-drop this at `~/Library/LaunchAgents/com.rohan.showtracker.plist`:
+**launchd** — drop this at `~/Library/LaunchAgents/com.rohan.showtracker.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -53,17 +53,18 @@ drop this at `~/Library/LaunchAgents/com.rohan.showtracker.plist`:
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.rohan.showtracker</string>
-  <key>WorkingDirectory</key><string>/Users/rohan/code/show-tracker</string>
+  <key>WorkingDirectory</key><string>/Users/rohan/Developer/personal/show-tracker</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/rohan/.asdf/shims/node</string>
+    <string>/Users/rohan/.asdf/shims/bun</string>
     <string>build/index.js</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PORT</key><string>3000</string>
     <key>HOST</key><string>0.0.0.0</string>
-    <key>DB_PATH</key><string>/Users/rohan/code/show-tracker/data/shows.db</string>
+    <key>DB_PATH</key><string>/Users/rohan/Developer/personal/show-tracker/data/shows.db</string>
+    <key>TMDB_API_KEY</key><string>your_key_here</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -79,47 +80,53 @@ then:
 launchctl load ~/Library/LaunchAgents/com.rohan.showtracker.plist
 ```
 
-fix the node path — if you use asdf, `which node` tells you. if you use homebrew node, it's `/opt/homebrew/bin/node`.
+fix the bun path — `which bun` tells you. if you use asdf it's `~/.asdf/shims/bun`.
 
 ### nightly refresh
 
-there's a plist at the repo root (`com.rohan.showtracker.refresh.plist`) that curls the refresh endpoint at 4am daily. copy it to `~/Library/LaunchAgents/` and `launchctl load` it. that's it.
+there's a plist at the repo root (`com.rohan.showtracker.refresh.plist`) that curls the refresh endpoint at 4am daily. copy it to `~/Library/LaunchAgents/` and `launchctl load` it.
 
-you also have a manual refresh button in the ui for when you just added a show and want episodes now.
+you also have a manual refresh button in the ui.
 
 ## accessing from elsewhere
 
-tailscale. `tailscale serve` or just hit `http://<studio-tailnet-name>:3000` from your macbook. done.
+tailscale. `tailscale serve` or just hit `http://<studio-tailnet-name>:3000` from your laptop. done.
 
 ## how it works
 
-1. search `/add` → tvmaze `/search/shows?q=...`
-2. click track → fetches full episode list, upserts everything into sqlite
-3. dashboard groups episodes by airdate, `>=` today only
-4. nightly cron re-fetches episodes for all tracked shows (handles mid-season schedule changes, new seasons, etc.)
+1. search bar on dashboard → TMDB search, filtered by country (defaults to US & Canada)
+2. click track → fetches show details from TMDB, resolves tvmaze ID via IMDB, pulls CA watch provider (Crave, Disney+, etc.), fetches episodes from both sources and merges them
+3. dashboard groups upcoming episodes by airdate with service logos, finale badges, airtimes normalized to local 12h
+4. show detail page (`/show/[id]`) shows all episodes in a card grid grouped by season
+5. nightly cron re-fetches episodes for all tracked shows
 
-tvmaze rate limit is 20 req / 10s — the refresh job sleeps 250ms between shows to stay way under.
+tvmaze rate limit is 20 req / 10s — the refresh sleeps 250ms between shows. TMDB rate limit is ~40 req/s, not a concern.
 
-## adding features later
+## env vars
 
-- "watched" tracking — add `watched_at` column on episodes, strike through in ui
-- notifications — when refresh finds a new episode landing within 24h, fire a webhook to ntfy/pushover/whatever
-- multi-user — add a users table, session cookies, do it when you feel like it
-- streaming service filter — tvmaze gives you `webChannel.name`, already stored in `network`, just add a filter pill row
+| var | default | description |
+|-----|---------|-------------|
+| `TMDB_API_KEY` | (required) | free key from themoviedb.org |
+| `DB_PATH` | `./data/shows.db` | sqlite database path |
+| `PORT` | `3000` | server port |
+| `HOST` | `localhost` | bind address |
 
 ## files
 
 ```
 src/
 ├── app.css, app.html
-├── lib/server/
-│   ├── db.js          # sqlite schema + prepared statements
-│   ├── tvmaze.js      # api client
-│   └── refresh.js     # fetch show + episodes, upsert
+├── lib/
+│   ├── format.js              # airtime normalization (ET → local 12h)
+│   └── server/
+│       ├── db.js              # sqlite schema + prepared statements + migrations
+│       ├── tmdb.js            # TMDB api client (search, shows, episodes, watch providers)
+│       ├── tvmaze.js          # tvmaze api client (search, shows, episodes)
+│       └── refresh.js         # track + refresh logic, dual-source merge
 └── routes/
     ├── +layout.svelte
-    ├── +page.svelte          # dashboard
+    ├── +page.svelte           # dashboard: search, upcoming episodes, tracked shows
     ├── +page.server.js
-    ├── add/                  # search + track new shows
-    └── api/refresh/          # cron hits this
+    ├── show/[id]/             # show detail with episode card grid
+    └── api/refresh/           # cron endpoint
 ```
