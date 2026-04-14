@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import { env } from '$env/dynamic/private';
 
 const dbPath = env.DB_PATH || './data/shows.db';
@@ -9,8 +9,8 @@ import { dirname } from 'node:path';
 try { mkdirSync(dirname(dbPath), { recursive: true }); } catch {}
 
 export const db = new Database(dbPath);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = ON');
 
 // --- Schema ---
 
@@ -47,12 +47,9 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_episodes_airdate ON episodes(airdate);
   CREATE INDEX IF NOT EXISTS idx_episodes_show ON episodes(show_id);
-
 `);
 
 // --- Migration from v0 schema ---
-// Old schema had tvmaze_id NOT NULL on shows, and episodes keyed by tvmaze_id.
-// Detect and migrate both tables.
 
 const showCols = db.prepare(`PRAGMA table_info(shows)`).all();
 const showColNames = showCols.map((c) => c.name);

@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "bunx --bun vite dev",
+    "build": "bunx --bun vite build",
+    "preview": "bunx --bun vite preview",
     "start": "bun build/index.js"
   },
   "devDependencies": {
@@ -14,10 +14,10 @@
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "^3.1.0",
     "svelte": "^4.2.0",
+    "svelte-adapter-bun": "^1.0.1",
     "vite": "^5.2.0"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
     "lucide-svelte": "0.309.0"
   }
 }
