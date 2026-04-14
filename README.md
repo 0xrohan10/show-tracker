@@ -90,7 +90,7 @@ you also have a manual refresh button in the ui.
 
 ## accessing from elsewhere
 
-tailscale. `tailscale serve` or just hit `http://<studio-tailnet-name>:3000` from your laptop. done.
+tailscale. `tailscale serve` or just hit `http://<studio-tailnet-name>:63000` from your laptop. done.
 
 ## how it works
 
@@ -108,7 +108,7 @@ tvmaze rate limit is 20 req / 10s — the refresh sleeps 250ms between shows. TM
 |-----|---------|-------------|
 | `TMDB_API_KEY` | (required) | free key from themoviedb.org |
 | `DB_PATH` | `./data/shows.db` | sqlite database path |
-| `PORT` | `3000` | server port |
+| `PORT` | `63000` | server port |
 | `HOST` | `localhost` | bind address |
 
 ## files

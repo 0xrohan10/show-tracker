@@ -15,7 +15,7 @@
     <string>-s</string>
     <string>-X</string>
     <string>POST</string>
-    <string>http://localhost:3000/api/refresh</string>
+    <string>http://localhost:63000/api/refresh</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
