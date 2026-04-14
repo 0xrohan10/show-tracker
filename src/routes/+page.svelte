@@ -95,6 +95,10 @@
   {/if}
 </div>
 
+{#if form?.error}
+  <p class="error-msg">{form.error}</p>
+{/if}
+
 {#if form?.refreshed}
   <p class="refresh-notice">
     refreshed {form.refreshed.length} show{form.refreshed.length === 1 ? '' : 's'}
