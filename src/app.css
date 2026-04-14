@@ -1,0 +1,320 @@
+:root {
+  --bg: #16181e;
+  --surface: #1e2028;
+  --panel: #252830;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(255, 255, 255, 0.15);
+  --text: #eaecf0;
+  --secondary: #b0b6c4;
+  --muted: #7a829a;
+  --faint: #3d4254;
+  --accent: #e8444a;
+  --accent-subtle: rgba(232, 68, 74, 0.12);
+  --accent-hover: #f05258;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease: var(--ease-out);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+a { color: var(--text); text-decoration: none; transition: color 150ms var(--ease); }
+a:hover { color: var(--accent); }
+
+/* ---- Layout ---- */
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+}
+
+/* ---- Nav ---- */
+
+header.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+
+header.nav h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--secondary);
+}
+header.nav h1 a { color: var(--secondary); }
+header.nav h1 a:hover { color: var(--text); }
+
+header.nav nav { display: flex; gap: 4px; }
+header.nav nav a {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  transition: color 150ms var(--ease), background 150ms var(--ease);
+}
+header.nav nav a:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+/* ---- Buttons ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease), transform 120ms var(--ease);
+}
+.btn:hover { background: var(--accent-hover); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--secondary);
+}
+.btn.ghost:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: var(--surface);
+}
+
+.btn.danger {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent-subtle);
+}
+.btn.danger:hover {
+  background: var(--accent-subtle);
+}
+
+/* ---- Inputs ---- */
+
+input[type="text"], input[type="search"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  width: 100%;
+  transition: border-color 150ms var(--ease);
+}
+input[type="text"]::placeholder, input[type="search"]::placeholder {
+  color: var(--muted);
+}
+input[type="text"]:focus, input[type="search"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+/* ---- Cards ---- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  transition: border-color 150ms var(--ease);
+}
+.card:hover {
+  border-color: var(--border-active);
+}
+
+/* ---- Tags ---- */
+
+.muted { color: var(--muted); font-size: 13px; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--faint);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--secondary);
+  white-space: nowrap;
+}
+
+/* ---- Dashboard: Date Groups ---- */
+
+.date-group { margin-bottom: 24px; }
+.date-group h2 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 8px;
+  padding: 0;
+  border-bottom: none;
+}
+
+/* ---- Dashboard: Episode Rows ---- */
+
+.ep-row {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  transition: background 150ms var(--ease);
+}
+.ep-row:last-child { border-bottom: none; }
+.ep-row img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--faint);
+}
+.ep-row .title {
+  font-size: 14px;
+  font-weight: 500;
+}
+.ep-row .ep-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Dashboard: Show Grid ---- */
+
+.show-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ---- Add: Search Results ---- */
+
+.search-results {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.search-result {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  transition: background 150ms var(--ease);
+}
+.search-result:hover {
+  background: var(--panel);
+}
+.search-result img {
+  width: 52px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--faint);
+}
+
+/* ---- Empty State ---- */
+
+.empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.empty a { color: var(--accent); }
+.empty a:hover { text-decoration: underline; }
+
+/* ---- Section Headers ---- */
+
+.section-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ---- Stagger Animation ---- */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-in {
+  opacity: 0;
+  animation: fadeInUp 250ms var(--ease-out) forwards;
+}
+
+/* Image fade-in on load */
+img[data-fade] {
+  opacity: 0;
+  transition: opacity 300ms var(--ease-out);
+}
+img[data-fade].loaded {
+  opacity: 1;
+}
+
+/* ---- Reduced Motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .stagger-in { opacity: 1; }
+}
+
+/* ---- Utility ---- */
+
+.mono {
+  font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
