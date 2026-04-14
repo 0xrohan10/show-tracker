@@ -13,6 +13,18 @@ function imgUrl(path, size = 'w342') {
   return path ? `${IMG}/${size}${path}` : null;
 }
 
+const STATUS_MAP = {
+  'Returning Series': 'Returning',
+  'In Production': 'In Production',
+  'Planned': 'Planned',
+  'Canceled': 'Canceled',
+  'Ended': 'Ended',
+};
+
+function normalizeStatus(raw) {
+  return STATUS_MAP[raw] || raw;
+}
+
 export async function searchShows(query) {
   const r = await fetch(`${BASE}/search/tv?query=${encodeURIComponent(query)}&api_key=${key()}`);
   if (!r.ok) throw new Error(`tmdb search failed: ${r.status}`);
@@ -39,7 +51,7 @@ export async function fetchShow(tmdbId) {
     image: imgUrl(s.poster_path),
     network: s.networks?.[0]?.name || null,
     country: (s.origin_country && s.origin_country[0]) || null,
-    status: s.status,
+    status: normalizeStatus(s.status),
     summary: s.overview || null,
     number_of_seasons: s.number_of_seasons || 0
   };
