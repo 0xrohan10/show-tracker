@@ -1,9 +1,8 @@
 import { stmt } from '$lib/server/db.js';
 import { refreshAll, refreshShow, trackFromTmdb } from '$lib/server/refresh.js';
-import { searchShows } from '$lib/server/tmdb.js';
 import { fail } from '@sveltejs/kit';
 
-export async function load({ url }) {
+export async function load() {
   const upcoming = stmt.upcomingEpisodes.all();
   const shows = stmt.listShows.all();
 
@@ -34,32 +33,9 @@ export async function load({ url }) {
   }
   const grouped = Array.from(groups.entries()).map(([date, episodes]) => ({ date, episodes }));
 
-  // search
-  const q = url.searchParams.get('q');
-  const country = url.searchParams.get('country') || 'US,CA';
   const tracked = new Set(shows.filter((s) => s.tmdb_id).map((s) => s.tmdb_id));
-  let results = [];
-  let searchError = null;
 
-  if (q) {
-    try {
-      results = await searchShows(q);
-      if (country !== 'all') {
-        const codes = new Set(country.split(','));
-        // sort matching countries first, but keep others (shows like Industry air in US/CA but origin is GB)
-        results.sort((a, b) => {
-          const aMatch = !a.country || codes.has(a.country) ? 0 : 1;
-          const bMatch = !b.country || codes.has(b.country) ? 0 : 1;
-          return aMatch - bMatch;
-        });
-      }
-      results = results.slice(0, 10);
-    } catch (err) {
-      searchError = String(err);
-    }
-  }
-
-  return { grouped, shows, q: q || '', results, tracked, country, searchError };
+  return { grouped, shows, tracked };
 }
 
 export const actions = {

@@ -1,9 +1,9 @@
 <script>
   import { enhance } from '$app/forms';
-  import { goto } from '$app/navigation';
-  import { navigating } from '$app/stores';
+  import { tick } from 'svelte';
   import { formatAirtime } from '$lib/format.js';
-  import { RefreshCw, Search, Trash2, Loader2 } from 'lucide-svelte';
+  import { RefreshCw, Search, Trash2, Loader2, X } from 'lucide-svelte';
+  import { onDestroy } from 'svelte';
   export let data;
   export let form;
 
@@ -19,13 +19,20 @@
     return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   }
 
-  let query = data.q || '';
-  let country = data.country || 'US,CA';
-  let timer;
   let refreshing = false;
   let refreshingShow = null;
   let untracking = null;
   let tracking = null;
+
+  let dialog;
+  let searchInput;
+  let query = '';
+  let country = 'US,CA';
+  let results = [];
+  let searchError = null;
+  let searchLoading = false;
+  let searchTimer;
+  let searchReqId = 0;
 
   const countries = [
     { value: 'US,CA', label: 'US & Canada' },
@@ -36,63 +43,79 @@
     { value: 'all', label: 'All countries' },
   ];
 
-  function navigate() {
-    if (!query.trim()) {
-      goto('/', { replaceState: true, noScroll: true, keepFocus: true });
-      return;
+  async function doSearch() {
+    const q = query.trim();
+    if (!q) { results = []; searchError = null; searchLoading = false; return; }
+    const reqId = ++searchReqId;
+    searchLoading = true;
+    try {
+      const params = new URLSearchParams({ q, country });
+      const res = await fetch(`/api/search?${params}`);
+      const j = await res.json();
+      if (reqId !== searchReqId) return; // stale
+      results = j.results || [];
+      searchError = j.error || null;
+    } catch (e) {
+      if (reqId !== searchReqId) return;
+      searchError = String(e);
+    } finally {
+      if (reqId === searchReqId) searchLoading = false;
     }
-    const params = new URLSearchParams({ q: query.trim(), country });
-    goto(`/?${params}`, { replaceState: true, noScroll: true, keepFocus: true });
   }
 
   function onInput(e) {
     query = e.target.value;
-    clearTimeout(timer);
-    timer = setTimeout(navigate, 350);
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(doSearch, 350);
   }
 
-  function onCountryChange(e) {
-    country = e.target.value;
-    if (query.trim()) navigate();
+  function onCountryChange() {
+    if (query.trim()) doSearch();
   }
 
-  $: if (data.q !== undefined) query = data.q || '';
-  $: if (data.country !== undefined) country = data.country || 'US,CA';
-  $: searching = query.trim().length > 0;
-  $: searchLoading = searching && $navigating;
+  async function openSearch() {
+    dialog?.showModal();
+    await tick();
+    searchInput?.focus();
+  }
+
+  function onKeydown(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      if (dialog?.open) closeSearch();
+      else openSearch();
+    }
+  }
+
+  function closeSearch() {
+    clearTimeout(searchTimer);
+    ++searchReqId;
+    query = '';
+    results = [];
+    searchError = null;
+    searchLoading = false;
+    dialog?.close();
+  }
+
+  onDestroy(() => clearTimeout(searchTimer));
 </script>
 
-<!-- Search bar -->
+<svelte:window on:keydown={onKeydown} />
+
+<!-- Top bar -->
 <div class="search-row">
-  <div class="search-field">
-    <input
-      type="search"
-      placeholder="Search shows to track…"
-      value={query}
-      on:input={onInput}
-    />
-    {#if searchLoading}
-      <div class="search-spinner"><Loader2 size={16} /></div>
-    {/if}
-  </div>
-  {#if searching}
-    <select class="country-select" value={country} on:change={onCountryChange}>
-      {#each countries as c}
-        <option value={c.value}>{c.label}</option>
-      {/each}
-    </select>
-  {/if}
-  {#if !searching}
-    <form method="POST" action="?/refresh" use:enhance={() => {
-      refreshing = true;
-      return async ({ update }) => { await update(); refreshing = false; };
-    }}>
-      <button class="btn ghost" disabled={refreshing}>
-        <span class:spin={refreshing}><RefreshCw size={14} /></span>
-        {refreshing ? 'refreshing…' : 'refresh'}
-      </button>
-    </form>
-  {/if}
+  <button class="btn" on:click={openSearch}>
+    <Search size={14} /> add show
+  </button>
+  <form method="POST" action="?/refresh" use:enhance={() => {
+    refreshing = true;
+    return async ({ update }) => { await update(); refreshing = false; };
+  }}>
+    <button class="btn ghost" disabled={refreshing}>
+      <span class:spin={refreshing}><RefreshCw size={14} /></span>
+      {refreshing ? 'refreshing…' : 'refresh'}
+    </button>
+  </form>
 </div>
 
 {#if form?.error}
@@ -106,149 +129,176 @@
   </p>
 {/if}
 
-<!-- Search results -->
-{#if searching}
-  {#if data.searchError}
-    <p class="error-msg">{data.searchError}</p>
-  {/if}
-
-  {#if data.q && data.results.length === 0 && !data.searchError && !searchLoading}
-    <p class="muted no-results">no results{country !== 'all' ? ' in ' + countries.find(c => c.value === country)?.label : ''}</p>
-  {/if}
-
-  <div class="search-results" class:loading={searchLoading}>
-    {#each data.results as r, i}
-      <div class="search-result stagger-in" style="animation-delay: {i * 40}ms">
-        <img src={r.image || ''} alt="" />
-        <div class="result-info">
-          <div class="result-name">{r.name}</div>
-          <div class="result-meta">
-            {r.network || 'unknown'} · {r.status || '—'}
-            {#if r.premiered}<span class="mono"> · {r.premiered.slice(0,4)}</span>{/if}
-          </div>
-          {#if r.summary}
-            <div class="result-summary">
-              {r.summary.length > 160 ? r.summary.slice(0, 160) + '…' : r.summary}
-            </div>
-          {/if}
-        </div>
-        {#if data.tracked.has(r.tmdb_id)}
-          <span class="tag">tracked</span>
-        {:else}
-          <form method="POST" action="?/track" use:enhance={() => {
-            tracking = r.tmdb_id;
-            return async ({ update }) => { await update(); tracking = null; };
-          }}>
-            <input type="hidden" name="tmdb_id" value={r.tmdb_id} />
-            <button class="btn" disabled={tracking === r.tmdb_id}>
-              {#if tracking === r.tmdb_id}
-                <span class="spin"><Loader2 size={14} /></span>
-              {:else}
-                track
-              {/if}
-            </button>
-          </form>
-        {/if}
-      </div>
-    {/each}
-  </div>
-{/if}
-
-<!-- Upcoming episodes -->
-{#if !searching}
-  {#if data.grouped.length === 0}
-    <div class="empty">
-      {#if data.shows.length === 0}
-        <p>no shows tracked yet. search above to add one.</p>
-      {:else}
-        <p>no upcoming episodes. try hitting refresh.</p>
+<!-- Search modal -->
+<dialog bind:this={dialog} on:close={closeSearch} class="search-dialog">
+  <div class="modal-header">
+    <div class="search-field">
+      <input
+        bind:this={searchInput}
+        type="search"
+        placeholder="Search shows to track…"
+        value={query}
+        on:input={onInput}
+      />
+      {#if searchLoading}
+        <div class="search-spinner"><Loader2 size={16} /></div>
       {/if}
     </div>
-  {:else}
-    {#each data.grouped as group}
-      <section class="date-group">
-        <h2 class="date-label">{formatDate(group.date)}</h2>
-        <div class="card ep-card">
-          {#each group.episodes as ep}
-            <div class="ep-row">
-              <img src={ep.image || ep.show_image || ''} alt="" class="ep-thumb" />
-              <div class="ep-info">
-                <div class="ep-header">
-                  <a href="/show/{ep.show_id}" class="ep-title">{ep.show_name}</a>
-                  {#if ep.watching_on_logo}
-                    <img src={ep.watching_on_logo} alt={ep.watching_on || ''} class="svc-logo" title={ep.watching_on || ''} />
-                  {:else if ep.watching_on || ep.network}
-                    <span class="tag">{ep.watching_on || ep.network}</span>
-                  {/if}
-                </div>
-                <div class="ep-meta">
-                  <span class="mono">S{String(ep.season).padStart(2,'0')}E{String(ep.number).padStart(2,'0')}</span>
-                  {#if ep.name}<span class="sep">·</span> {ep.name}{/if}
-                  {#if ep.airtime}<span class="sep">·</span> {formatAirtime(ep.airtime, ep.airdate)}{/if}
-                  {#if ep.finale === 'series'}<span class="badge badge-series">series finale</span>
-                  {:else if ep.finale === 'season'}<span class="badge badge-season">season finale</span>
-                  {/if}
-                </div>
-                {#if ep.summary}
-                  <div class="ep-summary">{ep.summary.length > 200 ? ep.summary.slice(0, 200) + '…' : ep.summary}</div>
+    <select class="country-select" bind:value={country} on:change={onCountryChange}>
+      {#each countries as c}
+        <option value={c.value}>{c.label}</option>
+      {/each}
+    </select>
+    <button type="button" class="btn ghost icon-btn" on:click={closeSearch} aria-label="Close">
+      <X size={16} />
+    </button>
+  </div>
+
+  <div class="modal-body">
+    {#if searchError}
+      <p class="error-msg">{searchError}</p>
+    {/if}
+
+    {#if query.trim() && results.length === 0 && !searchError && !searchLoading}
+      <p class="muted no-results">no results{country !== 'all' ? ' in ' + countries.find(c => c.value === country)?.label : ''}</p>
+    {/if}
+
+    {#if !query.trim()}
+      <p class="muted hint">start typing to search TMDB</p>
+    {/if}
+
+    <div class="search-results" class:loading={searchLoading}>
+      {#each results as r, i}
+        <div class="search-result stagger-in" style="animation-delay: {i * 40}ms">
+          <img src={r.image || ''} alt="" />
+          <div class="result-info">
+            <div class="result-name">{r.name}</div>
+            <div class="result-meta">
+              {r.network || 'unknown'} · {r.status || '—'}
+              {#if r.premiered}<span class="mono"> · {r.premiered.slice(0,4)}</span>{/if}
+            </div>
+            {#if r.summary}
+              <div class="result-summary">
+                {r.summary.length > 160 ? r.summary.slice(0, 160) + '…' : r.summary}
+              </div>
+            {/if}
+          </div>
+          {#if data.tracked.has(r.tmdb_id)}
+            <span class="tag">tracked</span>
+          {:else}
+            <form method="POST" action="?/track" use:enhance={() => {
+              tracking = r.tmdb_id;
+              return async ({ update }) => { await update(); tracking = null; };
+            }}>
+              <input type="hidden" name="tmdb_id" value={r.tmdb_id} />
+              <button class="btn" disabled={tracking === r.tmdb_id}>
+                {#if tracking === r.tmdb_id}
+                  <span class="spin"><Loader2 size={14} /></span>
+                {:else}
+                  track
+                {/if}
+              </button>
+            </form>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  </div>
+</dialog>
+
+<!-- Upcoming episodes -->
+{#if data.grouped.length === 0}
+  <div class="empty">
+    {#if data.shows.length === 0}
+      <p>no shows tracked yet. search above to add one.</p>
+    {:else}
+      <p>no upcoming episodes. try hitting refresh.</p>
+    {/if}
+  </div>
+{:else}
+  {#each data.grouped as group}
+    <section class="date-group">
+      <h2 class="date-label">{formatDate(group.date)}</h2>
+      <div class="card ep-card">
+        {#each group.episodes as ep}
+          <div class="ep-row">
+            <img src={ep.image || ep.show_image || ''} alt="" class="ep-thumb" />
+            <div class="ep-info">
+              <div class="ep-header">
+                <a href="/show/{ep.show_id}" class="ep-title">{ep.show_name}</a>
+                {#if ep.watching_on_logo}
+                  <img src={ep.watching_on_logo} alt={ep.watching_on || ''} class="svc-logo" title={ep.watching_on || ''} />
+                {:else if ep.watching_on || ep.network}
+                  <span class="tag">{ep.watching_on || ep.network}</span>
                 {/if}
               </div>
-            </div>
-          {/each}
-        </div>
-      </section>
-    {/each}
-  {/if}
-
-  {#if data.shows.length > 0}
-    <section class="tracked-section">
-      <h2 class="section-header">Tracked ({data.shows.length})</h2>
-      <div class="show-grid">
-        {#each data.shows as s, i}
-          <div class="card show-card stagger-in" style="animation-delay: {i * 30}ms" class:pending={refreshingShow === s.id || untracking === s.id}>
-            <div class="show-card-top">
-              {#if s.image}<img src={s.image} alt="" class="show-thumb" />{/if}
-              <div class="show-card-info">
-                <a href="/show/{s.id}" class="show-card-name">{s.name}</a>
-                <div class="show-card-meta">
-                  {#if s.watching_on_logo}
-                    <img src={s.watching_on_logo} alt={s.watching_on || ''} class="service-logo-sm" title={s.watching_on || ''} />
-                  {:else}
-                    {s.watching_on || s.network || ''}
-                  {/if}
-                  {#if s.status}<span class="sep">·</span> {s.status}{/if}
-                </div>
+              <div class="ep-meta">
+                <span class="mono">S{String(ep.season).padStart(2,'0')}E{String(ep.number).padStart(2,'0')}</span>
+                {#if ep.name}<span class="sep">·</span> {ep.name}{/if}
+                {#if ep.airtime}<span class="sep">·</span> {formatAirtime(ep.airtime, ep.airdate)}{/if}
+                {#if ep.finale === 'series'}<span class="badge badge-series">series finale</span>
+                {:else if ep.finale === 'season'}<span class="badge badge-season">season finale</span>
+                {/if}
               </div>
-            </div>
-            <div class="show-card-actions">
-              <form method="POST" action="?/refreshOne" use:enhance={() => {
-                refreshingShow = s.id;
-                return async ({ update }) => { await update(); refreshingShow = null; };
-              }}>
-                <input type="hidden" name="show_id" value={s.id} />
-                <button class="btn ghost btn-sm" disabled={refreshingShow === s.id}>
-                  <span class:spin={refreshingShow === s.id}><RefreshCw size={12} /></span>
-                </button>
-              </form>
-              <form method="POST" action="?/untrack" use:enhance={() => {
-                untracking = s.id;
-                return async ({ update }) => { await update(); untracking = null; };
-              }}>
-                <input type="hidden" name="show_id" value={s.id} />
-                <button class="btn danger btn-sm" disabled={untracking === s.id}>
-                  {#if untracking === s.id}
-                    <span class="spin"><Loader2 size={12} /></span>
-                  {:else}
-                    <Trash2 size={12} />
-                  {/if}
-                </button>
-              </form>
+              {#if ep.summary}
+                <div class="ep-summary">{ep.summary.length > 200 ? ep.summary.slice(0, 200) + '…' : ep.summary}</div>
+              {/if}
             </div>
           </div>
         {/each}
       </div>
     </section>
-  {/if}
+  {/each}
+{/if}
+
+{#if data.shows.length > 0}
+  <section class="tracked-section">
+    <h2 class="section-header">Tracked ({data.shows.length})</h2>
+    <div class="show-grid">
+      {#each data.shows as s, i}
+        <div class="card show-card stagger-in" style="animation-delay: {i * 30}ms" class:pending={refreshingShow === s.id || untracking === s.id}>
+          <div class="show-card-top">
+            {#if s.image}<img src={s.image} alt="" class="show-thumb" />{/if}
+            <div class="show-card-info">
+              <a href="/show/{s.id}" class="show-card-name">{s.name}</a>
+              <div class="show-card-meta">
+                {#if s.watching_on_logo}
+                  <img src={s.watching_on_logo} alt={s.watching_on || ''} class="service-logo-sm" title={s.watching_on || ''} />
+                {:else}
+                  {s.watching_on || s.network || ''}
+                {/if}
+                {#if s.status}<span class="sep">·</span> {s.status}{/if}
+              </div>
+            </div>
+          </div>
+          <div class="show-card-actions">
+            <form method="POST" action="?/refreshOne" use:enhance={() => {
+              refreshingShow = s.id;
+              return async ({ update }) => { await update(); refreshingShow = null; };
+            }}>
+              <input type="hidden" name="show_id" value={s.id} />
+              <button class="btn ghost btn-sm" disabled={refreshingShow === s.id}>
+                <span class:spin={refreshingShow === s.id}><RefreshCw size={12} /></span>
+              </button>
+            </form>
+            <form method="POST" action="?/untrack" use:enhance={() => {
+              untracking = s.id;
+              return async ({ update }) => { await update(); untracking = null; };
+            }}>
+              <input type="hidden" name="show_id" value={s.id} />
+              <button class="btn danger btn-sm" disabled={untracking === s.id}>
+                {#if untracking === s.id}
+                  <span class="spin"><Loader2 size={12} /></span>
+                {:else}
+                  <Trash2 size={12} />
+                {/if}
+              </button>
+            </form>
+          </div>
+        </div>
+      {/each}
+    </div>
+  </section>
 {/if}
 
 <style>
@@ -261,12 +311,12 @@
     animation: spin 0.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
 
-  /* Search */
   .search-row {
     display: flex;
     gap: 8px;
     margin-bottom: 24px;
   }
+
   .search-field {
     flex: 1;
     position: relative;
@@ -301,7 +351,36 @@
   .country-select:focus { outline: none; border-color: var(--accent); }
 
   .error-msg { color: var(--accent); font-size: 13px; margin: -12px 0 16px; }
-  .no-results { margin-top: 0; }
+  .no-results, .hint { margin: 16px 0 0; }
+
+  /* Dialog */
+  .search-dialog {
+    width: min(640px, 92vw);
+    max-height: 80vh;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+  }
+  .search-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+  }
+  .modal-header {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .modal-body {
+    padding: 12px;
+    overflow-y: auto;
+    max-height: calc(80vh - 64px);
+  }
+  .icon-btn { padding: 8px; display: inline-flex; align-items: center; justify-content: center; }
 
   .search-results {
     transition: opacity 200ms var(--ease), filter 200ms var(--ease);
