@@ -1,14 +1,14 @@
-import { stmt } from '$lib/server/db.js';
-import { refreshAll, refreshShow, trackFromTmdb } from '$lib/server/refresh.js';
+import { stmt } from '$lib/server/db';
+import { refreshAll, refreshShow, trackFromTmdb } from '$lib/server/refresh';
 import { fail } from '@sveltejs/kit';
+import type { PageServerLoad, Actions } from './$types';
 
-export async function load() {
+export const load: PageServerLoad = async () => {
   const upcoming = stmt.upcomingEpisodes.all();
   const shows = stmt.listShows.all();
 
-  // build finale lookup
   const seasonMax = stmt.seasonMaxEpisodes.all();
-  const finaleMap = new Map();
+  const finaleMap = new Map<string, typeof seasonMax[number]>();
   for (const row of seasonMax) {
     finaleMap.set(`${row.show_id}-${row.season}`, row);
   }
@@ -24,21 +24,20 @@ export async function load() {
     }
   }
 
-  // group by airdate
-  const groups = new Map();
+  const groups = new Map<string, typeof upcoming>();
   for (const ep of upcoming) {
     const key = ep.airdate || 'tba';
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(ep);
+    groups.get(key)!.push(ep);
   }
   const grouped = Array.from(groups.entries()).map(([date, episodes]) => ({ date, episodes }));
 
-  const tracked = new Set(shows.filter((s) => s.tmdb_id).map((s) => s.tmdb_id));
+  const tracked = new Set(shows.filter((s) => s.tmdb_id).map((s) => s.tmdb_id!));
 
   return { grouped, shows, tracked };
-}
+};
 
-export const actions = {
+export const actions: Actions = {
   refresh: async () => {
     const results = await refreshAll();
     return { refreshed: results };

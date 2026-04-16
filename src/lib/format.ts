@@ -3,7 +3,7 @@
  * Returns a consistent 12h format like "8:00 PM" or "10:30 PM".
  * Pass the airdate for correct DST handling.
  */
-export function formatAirtime(airtime, airdate) {
+export function formatAirtime(airtime: string | null | undefined, airdate: string | null | undefined): string {
   if (!airtime) return '';
   const [h, m] = airtime.split(':').map(Number);
   // Build a date in US Eastern using the airdate for correct EDT/EST
@@ -15,7 +15,7 @@ export function formatAirtime(airtime, airdate) {
 }
 
 /** Rough EDT check: second Sunday of March to first Sunday of November */
-function isEDT(dateStr) {
+function isEDT(dateStr: string): boolean {
   const d = new Date(dateStr + 'T12:00:00');
   const year = d.getFullYear();
   const marchSecondSun = nthDayOfMonth(year, 2, 0, 2); // March, Sunday, 2nd
@@ -23,7 +23,7 @@ function isEDT(dateStr) {
   return d >= marchSecondSun && d < novFirstSun;
 }
 
-function nthDayOfMonth(year, month, dayOfWeek, n) {
+function nthDayOfMonth(year: number, month: number, dayOfWeek: number, n: number): Date {
   const d = new Date(year, month, 1);
   let count = 0;
   while (count < n) {

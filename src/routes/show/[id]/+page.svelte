@@ -1,24 +1,29 @@
-<script>
+<script lang="ts">
   import { ArrowLeft } from 'lucide-svelte';
-  export let data;
+  import type { PageData } from './$types';
+  import type { EpisodeRow } from '$lib/server/db';
+
+  export let data: PageData;
 
   const { show, seasons } = data;
   const lastSeasonNum = seasons.length > 0 ? seasons[seasons.length - 1].num : 0;
   const isEnded = /ended/i.test(show.status || '');
 
-  function finaleType(ep, season) {
+  type Season = typeof seasons[number];
+
+  function finaleType(ep: EpisodeRow, season: Season): 'series' | 'season' | null {
     const isLastInSeason = ep === season.episodes[season.episodes.length - 1];
     if (!isLastInSeason) return null;
     return (season.num === lastSeasonNum && isEnded) ? 'series' : 'season';
   }
 
-  function shortDate(iso) {
+  function shortDate(iso: string | null): string {
     if (!iso) return '';
     const d = new Date(iso + 'T00:00:00');
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
-  function isPast(iso) {
+  function isPast(iso: string | null): boolean {
     if (!iso) return false;
     const d = new Date(iso + 'T00:00:00');
     const today = new Date(); today.setHours(0,0,0,0);

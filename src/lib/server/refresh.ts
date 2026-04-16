@@ -1,17 +1,42 @@
-import { db, stmt } from './db.js';
-import { fetchShow as fetchTvmazeShow, fetchEpisodes as fetchTvmazeEpisodes } from './tvmaze.js';
-import { fetchShow as fetchTmdbShow, fetchEpisodes as fetchTmdbEpisodes, fetchExternalIds, fetchWatchProviders, findTmdbIdByImdb } from './tmdb.js';
+import { db, stmt, type ShowRow } from './db';
+import { fetchShow as fetchTvmazeShow, fetchEpisodes as fetchTvmazeEpisodes, type TvmazeEpisode } from './tvmaze';
+import {
+  fetchShow as fetchTmdbShow,
+  fetchEpisodes as fetchTmdbEpisodes,
+  fetchExternalIds,
+  fetchWatchProviders,
+  findTmdbIdByImdb,
+  type TmdbEpisode
+} from './tmdb';
+
+interface EpisodeData {
+  season: number;
+  number: number;
+  name: string | null;
+  airdate: string | null;
+  airtime: string | null;
+  runtime: number | null;
+  summary: string | null;
+  image: string | null;
+}
+
+export interface RefreshResult {
+  id: number;
+  name: string;
+  ok: boolean;
+  error?: string;
+}
 
 /**
  * Look up a tvmaze ID from a TMDB show's external IDs (via IMDB).
  */
-export async function resolveTvmazeId(tmdbId) {
+export async function resolveTvmazeId(tmdbId: number): Promise<number | null> {
   try {
     const ext = await fetchExternalIds(tmdbId);
     if (!ext.imdb_id) return null;
     const r = await fetch(`https://api.tvmaze.com/lookup/shows?imdb=${ext.imdb_id}`);
     if (!r.ok) return null;
-    const show = await r.json();
+    const show = await r.json() as { id?: number } | null;
     return show?.id || null;
   } catch {
     return null;
@@ -22,9 +47,8 @@ export async function resolveTvmazeId(tmdbId) {
  * Merge episode data: tvmaze for airtimes, backfill name/summary from TMDB
  * when tvmaze data is missing or generic.
  */
-function mergeEpisodes(tvmazeEps, tmdbEps) {
-  // Index TMDB episodes by S/E for quick lookup
-  const tmdbIndex = new Map();
+function mergeEpisodes(tvmazeEps: TvmazeEpisode[], tmdbEps: TmdbEpisode[]): TvmazeEpisode[] {
+  const tmdbIndex = new Map<string, TmdbEpisode>();
   for (const e of tmdbEps) {
     tmdbIndex.set(`${e.season}-${e.number}`, e);
   }
@@ -34,11 +58,8 @@ function mergeEpisodes(tvmazeEps, tmdbEps) {
     if (!tmdbEp) return ep;
     return {
       ...ep,
-      // backfill name if tvmaze has a generic one (e.g. "Episode 4")
       name: (ep.name && !/^Episode \d+$/i.test(ep.name)) ? ep.name : (tmdbEp.name || ep.name),
-      // backfill summary if tvmaze is missing it
       summary: ep.summary || tmdbEp.summary || null,
-      // backfill image if tvmaze is missing it
       image: ep.image || tmdbEp.image || null
     };
   });
@@ -47,7 +68,7 @@ function mergeEpisodes(tvmazeEps, tmdbEps) {
 /**
  * Track a new show from TMDB search results.
  */
-export async function trackFromTmdb(tmdbId) {
+export async function trackFromTmdb(tmdbId: number): Promise<ShowRow> {
   const [show, tvmazeId, provider] = await Promise.all([
     fetchTmdbShow(tmdbId),
     resolveTvmazeId(tmdbId),
@@ -59,9 +80,9 @@ export async function trackFromTmdb(tmdbId) {
     show.network, show.status, show.summary,
     provider?.name || null, provider?.logo || null
   );
+  if (!row) throw new Error(`failed to insert show ${show.name}`);
 
-  // Get episodes from both sources when possible, merge for best data
-  let episodes;
+  let episodes: EpisodeData[] | null = null;
   if (tvmazeId) {
     try {
       const tvmazeEps = await fetchTvmazeEpisodes(tvmazeId);
@@ -75,9 +96,10 @@ export async function trackFromTmdb(tmdbId) {
     episodes = await fetchTmdbEpisodes(tmdbId);
   }
 
+  const eps = episodes;
   const tx = db.transaction(() => {
     stmt.deleteEpisodesForShow.run(row.id);
-    for (const e of episodes) {
+    for (const e of eps) {
       stmt.upsertEpisode.run(
         row.id, e.season, e.number, e.name,
         e.airdate, e.airtime, e.runtime, e.summary, e.image
@@ -92,17 +114,16 @@ export async function trackFromTmdb(tmdbId) {
 /**
  * Refresh a single show's episode data.
  */
-export async function refreshShow(showId) {
+export async function refreshShow(showId: number): Promise<ShowRow> {
   const row = stmt.getShowById.get(showId);
   if (!row) throw new Error(`show ${showId} not found`);
 
-  // Resolve tmdb_id if we only have tvmaze_id (legacy shows)
-  let tmdbId = row.tmdb_id;
+  let tmdbId: number | null = row.tmdb_id;
   if (!tmdbId && row.tvmaze_id) {
     try {
       const r = await fetch(`https://api.tvmaze.com/shows/${row.tvmaze_id}`);
       if (r.ok) {
-        const tvShow = await r.json();
+        const tvShow = await r.json() as { externals?: { imdb?: string } };
         const imdbId = tvShow.externals?.imdb;
         if (imdbId) {
           tmdbId = await findTmdbIdByImdb(imdbId);
@@ -111,7 +132,6 @@ export async function refreshShow(showId) {
     } catch { /* best effort */ }
   }
 
-  // Fetch watch provider from TMDB
   let watchingOn = row.watching_on;
   let watchingOnLogo = row.watching_on_logo;
   if (tmdbId) {
@@ -124,8 +144,7 @@ export async function refreshShow(showId) {
     } catch { /* best effort */ }
   }
 
-  // Update show metadata
-  let episodes;
+  let episodes: EpisodeData[] | null = null;
   if (row.tvmaze_id) {
     try {
       const show = await fetchTvmazeShow(row.tvmaze_id);
@@ -134,7 +153,6 @@ export async function refreshShow(showId) {
         show.network, show.status, show.summary, watchingOn, watchingOnLogo
       );
 
-      // Merge with TMDB for better names/summaries
       const tvmazeEps = await fetchTvmazeEpisodes(row.tvmaze_id);
       if (tmdbId) {
         try {
@@ -152,7 +170,7 @@ export async function refreshShow(showId) {
   }
 
   if (!episodes && (tmdbId || row.tmdb_id)) {
-    const id = tmdbId || row.tmdb_id;
+    const id = (tmdbId || row.tmdb_id)!;
     const show = await fetchTmdbShow(id);
     stmt.insertShowByTmdb.get(
       row.tvmaze_id, show.tmdb_id, show.name, show.image,
@@ -163,9 +181,10 @@ export async function refreshShow(showId) {
 
   if (!episodes) throw new Error(`no source available for show ${row.name}`);
 
+  const eps = episodes;
   const tx = db.transaction(() => {
     stmt.deleteEpisodesForShow.run(row.id);
-    for (const e of episodes) {
+    for (const e of eps) {
       stmt.upsertEpisode.run(
         row.id, e.season, e.number, e.name,
         e.airdate, e.airtime, e.runtime, e.summary, e.image
@@ -180,9 +199,9 @@ export async function refreshShow(showId) {
 /**
  * Refresh all tracked shows.
  */
-export async function refreshAll() {
+export async function refreshAll(): Promise<RefreshResult[]> {
   const shows = stmt.listShows.all();
-  const results = [];
+  const results: RefreshResult[] = [];
   for (const s of shows) {
     try {
       await refreshShow(s.id);

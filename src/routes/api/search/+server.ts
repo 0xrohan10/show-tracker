@@ -1,7 +1,8 @@
-import { searchShows } from '$lib/server/tmdb.js';
+import { searchShows } from '$lib/server/tmdb';
 import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
 
-export async function GET({ url }) {
+export const GET: RequestHandler = async ({ url }) => {
   const q = url.searchParams.get('q')?.trim();
   const country = url.searchParams.get('country') || 'US,CA';
   if (!q) return json({ results: [] });
@@ -21,4 +22,4 @@ export async function GET({ url }) {
   } catch (err) {
     return json({ results: [], error: String(err) }, { status: 500 });
   }
-}
+};

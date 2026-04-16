@@ -1,13 +1,24 @@
-<script>
+<script lang="ts">
   import { enhance } from '$app/forms';
-  import { tick } from 'svelte';
-  import { formatAirtime } from '$lib/format.js';
+  import { tick, onDestroy } from 'svelte';
+  import { formatAirtime } from '$lib/format';
   import { RefreshCw, Search, Trash2, Loader2, X } from 'lucide-svelte';
-  import { onDestroy } from 'svelte';
-  export let data;
-  export let form;
+  import type { PageData, ActionData } from './$types';
 
-  function formatDate(iso) {
+  export let data: PageData;
+  export let form: ActionData;
+
+  interface SearchResult {
+    tmdb_id: number;
+    name: string;
+    image: string | null;
+    network: string | null;
+    status: string | null;
+    summary: string | null;
+    premiered: string | null;
+  }
+
+  function formatDate(iso: string): string {
     if (!iso || iso === 'tba') return 'TBA';
     const d = new Date(iso + 'T00:00:00');
     const today = new Date(); today.setHours(0,0,0,0);
@@ -20,18 +31,18 @@
   }
 
   let refreshing = false;
-  let refreshingShow = null;
-  let untracking = null;
-  let tracking = null;
+  let refreshingShow: number | null = null;
+  let untracking: number | null = null;
+  let tracking: number | null = null;
 
-  let dialog;
-  let searchInput;
+  let dialog: HTMLDialogElement | undefined;
+  let searchInput: HTMLInputElement | undefined;
   let query = '';
   let country = 'US,CA';
-  let results = [];
-  let searchError = null;
+  let results: SearchResult[] = [];
+  let searchError: string | null = null;
   let searchLoading = false;
-  let searchTimer;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let searchReqId = 0;
 
   const countries = [
@@ -51,7 +62,7 @@
     try {
       const params = new URLSearchParams({ q, country });
       const res = await fetch(`/api/search?${params}`);
-      const j = await res.json();
+      const j = await res.json() as { results?: SearchResult[]; error?: string };
       if (reqId !== searchReqId) return; // stale
       results = j.results || [];
       searchError = j.error || null;
@@ -63,8 +74,8 @@
     }
   }
 
-  function onInput(e) {
-    query = e.target.value;
+  function onInput(e: Event) {
+    query = (e.target as HTMLInputElement).value;
     clearTimeout(searchTimer);
     searchTimer = setTimeout(doSearch, 350);
   }
@@ -79,7 +90,7 @@
     searchInput?.focus();
   }
 
-  function onKeydown(e) {
+  function onKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
       if (dialog?.open) closeSearch();
