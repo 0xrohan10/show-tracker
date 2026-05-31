@@ -1,10 +1,10 @@
 import { stmt } from '$lib/server/db';
-import { refreshAll, refreshShow, trackFromTmdb } from '$lib/server/refresh';
+import { refreshAllShows, refreshShow, trackFromTmdb } from '$lib/server/refresh';
 import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 
 export const load: PageServerLoad = async () => {
-  const upcoming = stmt.upcomingEpisodes.all();
+  const episodes = stmt.upcomingEpisodes.all();
   const shows = stmt.listShows.all();
 
   const seasonMax = stmt.seasonMaxEpisodes.all();
@@ -14,7 +14,7 @@ export const load: PageServerLoad = async () => {
   }
   const showStatus = new Map(shows.map((s) => [s.id, s.status]));
 
-  for (const ep of upcoming) {
+  for (const ep of episodes) {
     const key = `${ep.show_id}-${ep.season}`;
     const info = finaleMap.get(key);
     if (info && ep.number === info.max_number) {
@@ -24,22 +24,22 @@ export const load: PageServerLoad = async () => {
     }
   }
 
-  const groups = new Map<string, typeof upcoming>();
-  for (const ep of upcoming) {
+  const episodeGroupsMap = new Map<string, typeof episodes>();
+  for (const ep of episodes) {
     const key = ep.airdate || 'tba';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(ep);
+    if (!episodeGroupsMap.has(key)) episodeGroupsMap.set(key, []);
+    episodeGroupsMap.get(key)!.push(ep);
   }
-  const grouped = Array.from(groups.entries()).map(([date, episodes]) => ({ date, episodes }));
+  const episodeGroups = Array.from(episodeGroupsMap.entries()).map(([date, episodes]) => ({ date, episodes }));
 
   const tracked = new Set(shows.filter((s) => s.tmdb_id).map((s) => s.tmdb_id!));
 
-  return { grouped, shows, tracked };
+  return { episodeGroups, shows, tracked };
 };
 
 export const actions: Actions = {
   refresh: async () => {
-    const results = await refreshAll();
+    const results = await refreshAllShows();
     return { refreshed: results };
   },
   track: async ({ request }) => {

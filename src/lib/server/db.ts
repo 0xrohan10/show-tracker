@@ -63,6 +63,48 @@ export interface SeasonMaxRow {
   max_season: number;
 }
 
+export interface TeamRow {
+  id: number;
+  slug: string;
+  sport: string;
+  league: string;
+  external_id: string;
+  name: string;
+  short_name: string | null;
+  logo: string | null;
+  primary_color: string | null;
+  added_at: string;
+  last_refreshed_at: string | null;
+}
+
+export interface GameRow {
+  id: number;
+  team_id: number;
+  external_id: string;
+  game_date: string;
+  starts_at: string | null;
+  status: string | null;
+  home_team: string;
+  away_team: string;
+  home_score: number | null;
+  away_score: number | null;
+  home_starting_pitcher: string | null;
+  away_starting_pitcher: string | null;
+  tv_channel: string | null;
+  venue: string | null;
+}
+
+export interface UpcomingGameRow extends GameRow {
+  team_slug: string;
+  team_name: string;
+  team_logo: string | null;
+  team_primary_color: string | null;
+  league: string;
+  sport: string;
+  is_home: number;
+  attending: number | null;
+}
+
 interface PragmaColumn {
   cid: number;
   name: string;
@@ -107,6 +149,54 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_episodes_airdate ON episodes(airdate);
   CREATE INDEX IF NOT EXISTS idx_episodes_show ON episodes(show_id);
+
+  CREATE TABLE IF NOT EXISTS teams (
+    id INTEGER PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    sport TEXT NOT NULL,
+    league TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    short_name TEXT,
+    logo TEXT,
+    primary_color TEXT,
+    added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_refreshed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS games (
+    id INTEGER PRIMARY KEY,
+    team_id INTEGER NOT NULL,
+    external_id TEXT NOT NULL,
+    game_date TEXT NOT NULL,
+    starts_at TEXT,
+    status TEXT,
+    home_team TEXT NOT NULL,
+    away_team TEXT NOT NULL,
+    home_score INTEGER,
+    away_score INTEGER,
+    home_starting_pitcher TEXT,
+    away_starting_pitcher TEXT,
+    tv_channel TEXT,
+    venue TEXT,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    UNIQUE(team_id, external_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_games_date ON games(game_date);
+  CREATE INDEX IF NOT EXISTS idx_games_team ON games(team_id);
+
+  CREATE TABLE IF NOT EXISTS game_attendance (
+    id INTEGER PRIMARY KEY,
+    team_id INTEGER NOT NULL,
+    external_id TEXT NOT NULL,
+    attending INTEGER NOT NULL CHECK(attending IN (0, 1)),
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    UNIQUE(team_id, external_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_game_attendance_game ON game_attendance(team_id, external_id);
 `);
 
 // --- Migration from v0 schema ---
@@ -170,6 +260,23 @@ if (!currentShowCols.includes('watching_on')) {
 if (!currentShowCols.includes('watching_on_logo')) {
   db.exec(`ALTER TABLE shows ADD COLUMN watching_on_logo TEXT`);
 }
+
+const currentTeamCols = db.prepare<PragmaColumn, []>(`PRAGMA table_info(teams)`).all().map((c) => c.name);
+if (!currentTeamCols.includes('primary_color')) {
+  db.exec(`ALTER TABLE teams ADD COLUMN primary_color TEXT`);
+}
+
+const currentGameCols = db.prepare<PragmaColumn, []>(`PRAGMA table_info(games)`).all().map((c) => c.name);
+if (!currentGameCols.includes('home_starting_pitcher')) {
+  db.exec(`ALTER TABLE games ADD COLUMN home_starting_pitcher TEXT`);
+}
+if (!currentGameCols.includes('away_starting_pitcher')) {
+  db.exec(`ALTER TABLE games ADD COLUMN away_starting_pitcher TEXT`);
+}
+if (!currentGameCols.includes('tv_channel')) {
+  db.exec(`ALTER TABLE games ADD COLUMN tv_channel TEXT`);
+}
+db.exec(`DELETE FROM game_attendance WHERE attending = 0`);
 
 // drop service_mappings if it exists (replaced by watching_on)
 try { db.exec(`DROP TABLE IF EXISTS service_mappings`); } catch {}
@@ -249,5 +356,57 @@ export const stmt = {
   // Show detail
   episodesByShow: db.prepare<EpisodeRow, [number]>(`
     SELECT * FROM episodes WHERE show_id = ? ORDER BY season ASC, number ASC
+  `),
+
+  // Teams
+  insertTeam: db.prepare<TeamRow, any[]>(`
+    INSERT INTO teams (slug, sport, league, external_id, name, short_name, logo, primary_color)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(slug) DO UPDATE SET
+      sport=excluded.sport, league=excluded.league, external_id=excluded.external_id,
+      name=excluded.name, short_name=excluded.short_name, logo=excluded.logo,
+      primary_color=excluded.primary_color
+    RETURNING *
+  `),
+  deleteTeam: db.prepare<void, [number]>(`DELETE FROM teams WHERE id = ?`),
+  getTeamById: db.prepare<TeamRow, [number]>(`SELECT * FROM teams WHERE id = ?`),
+  getTeamBySlug: db.prepare<TeamRow, [string]>(`SELECT * FROM teams WHERE slug = ?`),
+  listTeams: db.prepare<TeamRow, []>(`SELECT * FROM teams ORDER BY name ASC`),
+  markTeamRefreshed: db.prepare<void, [number]>(`UPDATE teams SET last_refreshed_at = CURRENT_TIMESTAMP WHERE id = ?`),
+
+  // Games
+  upsertGame: db.prepare<void, any[]>(`
+    INSERT INTO games (team_id, external_id, game_date, starts_at, status, home_team, away_team, home_score, away_score, home_starting_pitcher, away_starting_pitcher, tv_channel, venue)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(team_id, external_id) DO UPDATE SET
+      game_date=excluded.game_date, starts_at=excluded.starts_at, status=excluded.status,
+      home_team=excluded.home_team, away_team=excluded.away_team,
+      home_score=excluded.home_score, away_score=excluded.away_score,
+      home_starting_pitcher=excluded.home_starting_pitcher,
+      away_starting_pitcher=excluded.away_starting_pitcher,
+      tv_channel=excluded.tv_channel,
+      venue=excluded.venue
+  `),
+  deleteGamesForTeam: db.prepare<void, [number]>(`DELETE FROM games WHERE team_id = ?`),
+  setGameAttendance: db.prepare<void, [number, string, number]>(`
+    INSERT INTO game_attendance (team_id, external_id, attending, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(team_id, external_id) DO UPDATE SET
+      attending=excluded.attending,
+      updated_at=CURRENT_TIMESTAMP
+  `),
+  clearGameAttendance: db.prepare<void, [number, string]>(`
+    DELETE FROM game_attendance WHERE team_id = ? AND external_id = ?
+  `),
+  upcomingGames: db.prepare<UpcomingGameRow, []>(`
+    SELECT g.*, t.slug AS team_slug, t.name AS team_name, t.logo AS team_logo,
+      t.primary_color AS team_primary_color, t.league, t.sport,
+      CASE WHEN g.home_team = t.name THEN 1 ELSE 0 END AS is_home,
+      a.attending AS attending
+    FROM games g
+    JOIN teams t ON t.id = g.team_id
+    LEFT JOIN game_attendance a ON a.team_id = g.team_id AND a.external_id = g.external_id
+    WHERE g.game_date >= date('now')
+    ORDER BY g.game_date ASC, g.starts_at ASC
   `)
 };

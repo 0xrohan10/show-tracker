@@ -8,6 +8,7 @@ import {
   findTmdbIdByImdb,
   type TmdbEpisode
 } from './tmdb';
+import { refreshAllTeams } from './sports';
 
 interface EpisodeData {
   season: number;
@@ -199,7 +200,7 @@ export async function refreshShow(showId: number): Promise<ShowRow> {
 /**
  * Refresh all tracked shows.
  */
-export async function refreshAll(): Promise<RefreshResult[]> {
+export async function refreshAllShows(): Promise<RefreshResult[]> {
   const shows = stmt.listShows.all();
   const results: RefreshResult[] = [];
   for (const s of shows) {
@@ -211,5 +212,14 @@ export async function refreshAll(): Promise<RefreshResult[]> {
     }
     await new Promise((r) => setTimeout(r, 250));
   }
+  return results;
+}
+
+/**
+ * Refresh all tracked sources.
+ */
+export async function refreshAll(): Promise<RefreshResult[]> {
+  const results = await refreshAllShows();
+  results.push(...await refreshAllTeams());
   return results;
 }

@@ -8,6 +8,7 @@
     <h1><a href="/">tracker</a></h1>
     <nav>
       <a href="/" class:active={$page.url.pathname === '/'}>upcoming</a>
+      <a href="/sports" class:active={$page.url.pathname.startsWith('/sports')}>sports</a>
     </nav>
   </header>
   <slot />

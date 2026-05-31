@@ -111,6 +111,10 @@
   onDestroy(() => clearTimeout(searchTimer));
 </script>
 
+<svelte:head>
+  <title>Upcoming Shows · Tracker</title>
+</svelte:head>
+
 <svelte:window on:keydown={onKeydown} />
 
 <!-- Top bar -->
@@ -175,7 +179,7 @@
     {/if}
 
     {#if !query.trim()}
-      <p class="muted hint">start typing to search TMDB</p>
+      <p class="muted hint">start typing to search TMDB for shows</p>
     {/if}
 
     <div class="search-results" class:loading={searchLoading}>
@@ -217,54 +221,54 @@
   </div>
 </dialog>
 
-<!-- Upcoming episodes -->
-{#if data.grouped.length === 0}
-  <div class="empty">
-    {#if data.shows.length === 0}
-      <p>no shows tracked yet. search above to add one.</p>
-    {:else}
-      <p>no upcoming episodes. try hitting refresh.</p>
-    {/if}
-  </div>
+{#if data.episodeGroups.length === 0}
+  {#if data.shows.length === 0}
+    <div class="empty compact"><p>no shows tracked yet. add one above.</p></div>
+  {:else}
+    <div class="empty compact"><p>no upcoming episodes. try hitting refresh.</p></div>
+  {/if}
 {:else}
-  {#each data.grouped as group}
-    <section class="date-group">
-      <h2 class="date-label">{formatDate(group.date)}</h2>
-      <div class="card ep-card">
-        {#each group.episodes as ep}
-          <div class="ep-row">
-            <img src={ep.image || ep.show_image || ''} alt="" class="ep-thumb" />
-            <div class="ep-info">
-              <div class="ep-header">
-                <a href="/show/{ep.show_id}" class="ep-title">{ep.show_name}</a>
-                {#if ep.watching_on_logo}
-                  <img src={ep.watching_on_logo} alt={ep.watching_on || ''} class="svc-logo" title={ep.watching_on || ''} />
-                {:else if ep.watching_on || ep.network}
-                  <span class="tag">{ep.watching_on || ep.network}</span>
+  <section class="upcoming-section">
+    <h2 class="section-header">Upcoming Episodes</h2>
+    {#each data.episodeGroups as group}
+      <section class="date-group">
+        <h3 class="date-label">{formatDate(group.date)}</h3>
+        <div class="card ep-card">
+          {#each group.episodes as ep}
+            <div class="ep-row">
+              <img src={ep.image || ep.show_image || ''} alt="" class="ep-thumb" />
+              <div class="ep-info">
+                <div class="ep-header">
+                  <a href="/show/{ep.show_id}" class="ep-title">{ep.show_name}</a>
+                  {#if ep.watching_on_logo}
+                    <img src={ep.watching_on_logo} alt={ep.watching_on || ''} class="svc-logo" title={ep.watching_on || ''} />
+                  {:else if ep.watching_on || ep.network}
+                    <span class="tag">{ep.watching_on || ep.network}</span>
+                  {/if}
+                </div>
+                <div class="ep-meta">
+                  <span class="mono">S{String(ep.season).padStart(2,'0')}E{String(ep.number).padStart(2,'0')}</span>
+                  {#if ep.name}<span class="sep">·</span> {ep.name}{/if}
+                  {#if ep.airtime}<span class="sep">·</span> {formatAirtime(ep.airtime, ep.airdate)}{/if}
+                  {#if ep.finale === 'series'}<span class="badge badge-series">series finale</span>
+                  {:else if ep.finale === 'season'}<span class="badge badge-season">season finale</span>
+                  {/if}
+                </div>
+                {#if ep.summary}
+                  <div class="ep-summary">{ep.summary.length > 200 ? ep.summary.slice(0, 200) + '…' : ep.summary}</div>
                 {/if}
               </div>
-              <div class="ep-meta">
-                <span class="mono">S{String(ep.season).padStart(2,'0')}E{String(ep.number).padStart(2,'0')}</span>
-                {#if ep.name}<span class="sep">·</span> {ep.name}{/if}
-                {#if ep.airtime}<span class="sep">·</span> {formatAirtime(ep.airtime, ep.airdate)}{/if}
-                {#if ep.finale === 'series'}<span class="badge badge-series">series finale</span>
-                {:else if ep.finale === 'season'}<span class="badge badge-season">season finale</span>
-                {/if}
-              </div>
-              {#if ep.summary}
-                <div class="ep-summary">{ep.summary.length > 200 ? ep.summary.slice(0, 200) + '…' : ep.summary}</div>
-              {/if}
             </div>
-          </div>
-        {/each}
-      </div>
-    </section>
-  {/each}
+          {/each}
+        </div>
+      </section>
+    {/each}
+  </section>
 {/if}
 
 {#if data.shows.length > 0}
   <section class="tracked-section">
-    <h2 class="section-header">Tracked ({data.shows.length})</h2>
+    <h2 class="section-header">Tracked Shows ({data.shows.length})</h2>
     <div class="show-grid">
       {#each data.shows as s, i}
         <div class="card show-card stagger-in" style="animation-delay: {i * 30}ms" class:pending={refreshingShow === s.id || untracking === s.id}>
@@ -415,6 +419,7 @@
   .svc-logo { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; }
 
   /* Upcoming */
+  .upcoming-section { margin-top: 28px; }
   .date-group { margin-bottom: 24px; }
   .date-label {
     font-size: 11px; font-weight: 600; text-transform: uppercase;

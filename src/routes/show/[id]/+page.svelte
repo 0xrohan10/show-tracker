@@ -31,6 +31,10 @@
   }
 </script>
 
+<svelte:head>
+  <title>{show.name} · Tracker</title>
+</svelte:head>
+
 <a href="/" class="back-link"><ArrowLeft size={14} /> back</a>
 
 <div class="show-header">
